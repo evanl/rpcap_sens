@@ -26,6 +26,14 @@ class RelPerm:
         print " to " + str(self.sw_res)
         return 0
 
+    def set_viscosities(self, mu_w, mu_n):
+        RelPerm.mu_w = mu_w
+        RelPerm.mu_n = mu_n
+        return 0
+
+    def get_viscosities(self):
+        return RelPerm.mu_w, RelPerm.mu_n
+
     def get_sw_res(self):
         return RelPerm.sw_res
 
@@ -40,8 +48,6 @@ class RelPerm:
         return krw
     def d_ds_kr_wet(self, sw):
         return 1./ (1. - self.get_sw_res())
-    def d_ds_kr_non(self, sw):
-        return -1.
     def kr_non(self, sw):
         sn = 1. - sw
         if sn <= 0.:
@@ -51,6 +57,25 @@ class RelPerm:
         else:
             krn = (sn) / (1.)
         return krn
+    def d_ds_kr_non(self, sw):
+        return -1.
+    def fracflow_wet(self, sw):
+        """ MUST ADD VISCOSITIES FIRST
+        """
+        muw, mun = self.get_viscosities()
+        krw = self.kr_wet(sw)
+        krn = self.kr_non(sw)
+        ff = (krw / muw) / (krw / muw + krn / mun)
+        return ff
+    def fracflow_non(self, sw):
+        """ MUST ADD VISCOSITIES FIRST
+        """
+        muw, mun = self.get_viscosities()
+        krw = self.kr_wet(sw)
+        krn = self.kr_non(sw)
+        ff = (krn / mun) / (krw / muw + krn / mun)
+        return ff
+
     def plot_value(self, n_spaces=100., fmt = 'png'):
         sw_res = self.get_sw_res()
         sw = np.linspace(sw_res, 1., n_spaces)
@@ -72,6 +97,24 @@ class RelPerm:
         ax.legend(loc='center left', bbox_to_anchor= (1, 0.5))
         rp_type = self.get_rp_type()
         fig.savefig('rel_perm_curves_' + str(rp_type) + '.' + fmt)
+        plt.clf()
+        plt.close()
+
+    def plot_fracflow(self, n_spaces=100., fmt = 'png'):
+        sw_res = self.get_sw_res()
+        sw = np.linspace(sw_res, 1., n_spaces)
+        ff = np.zeros(len(sw))
+        for i in range(len(sw)):
+            ff[i] = self.fracflow_wet(sw[i])
+        fig = plt.figure(num=None, dpi=480,\
+                facecolor='w', edgecolor = 'k')
+        fig.suptitle('Fractional Flow Function')
+        ax = fig.add_subplot(111)
+        ax.set_xlabel('Wetting Fluid Saturation []')
+        ax.set_ylabel('f(sw) []')
+        p1 = plt.plot(sw, ff)
+        rp_type = self.get_rp_type()
+        fig.savefig('fracflow_wet_' + str(rp_type) + '.' + fmt)
         plt.clf()
         plt.close()
 
@@ -170,10 +213,9 @@ class CapPres:
 # ===========================================================================
 
 class RPVanGenuchten(RelPerm):
-    def __init__(self, sw_res, lamb, s_lr, s_ls, s_gr, \
-            rp_type = 'van_genuchten'):
+    def __init__(self, sw_res, lamb, s_lr, s_ls, s_gr):
         self.set_sw_res(sw_res)
-        self.set_rp_type(rp_type)
+        self.set_rp_type('van_genuchten')
         self.lamb = lamb
         self.s_ls = s_ls
         self.s_lr = s_lr
@@ -235,11 +277,27 @@ class RPVanGenuchten(RelPerm):
             dkrn_ds = f * hp + h * fp
         return dkrn_ds
 
+class RPCubic(RelPerm):
+    def __init__(self):
+        self.set_sw_res(0.)
+        self.set_rp_type('cubic')
+    def kr_wet(self, sw):
+        krw = pow(sw, 3.)
+        return krw
+    def d_ds_kr_wet(self, sw):
+        dkrw_ds = 3. * pow(sw, 2.)
+        return dkrw_ds
+    def kr_non(self, sw):
+        krn = pow(1. - sw, 3.)
+        return krn
+    def d_ds_kr_non(self, sw):
+        drkn_ds = 3 * pow(1. - sw, 2.) * -1.
+        return drkn_ds
+
 class CPVanGenuchten(CapPres):
-    def __init__(self, sw_res, lamb, s_lr, p_0, p_max, s_ls, \
-            cp_type = 'van_genuchten'):
+    def __init__(self, sw_res, lamb, s_lr, p_0, p_max, s_ls):
         self.set_sw_res(sw_res)
-        self.set_cp_type(cp_type)
+        self.set_cp_type('van_genuchten')
         self.lamb = lamb
         self.s_lr = s_lr
         self.p_0 = p_0
@@ -293,4 +351,11 @@ if __name__ == '__main__':
             cp_p_max, cp_s_ls)
     cp_van_genuchten.plot_value()
     cp_van_genuchten.plot_derivative()
+    rp_cubic = RPCubic()
+    rp_cubic.plot_value()
+    rp_cubic.plot_derivative()
+    mu_w = 8.9e-4 # Pa*s
+    mu_n = 0.8 * mu_w
+    rp_cubic.set_viscosities(mu_w, mu_n)
+    rp_cubic.plot_fracflow()
 
