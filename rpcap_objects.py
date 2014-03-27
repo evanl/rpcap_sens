@@ -114,7 +114,7 @@ class RelPerm:
         ax.set_ylabel('f(sw) []')
         p1 = plt.plot(sw, ff)
         rp_type = self.get_rp_type()
-        fig.savefig('fracflow_wet_' + str(rp_type) + '.' + fmt)
+        fig.savefig('fracflow_wet'+ '_' + str(rp_type) + '.' + fmt)
         plt.clf()
         plt.close()
 
@@ -151,18 +151,15 @@ class CapPres:
         CapPres.cp_type = cp_type
 
     def set_cp_type(self, cp_type):
-        print "changing capillary pressure type: " + str(CapPres.cp_type)
         CapPres.cp_type = cp_type
-        print " to: " + str(CapPres.cp_type)
         return 0
     def get_cp_type(self):
         return CapPres.cp_type
 
     def set_sw_res(self, sw_res):
-        print "Changing sw_res from " + str(self.sw_res)
         RelPerm.sw_res = sw_res
-        print " to " + str(self.sw_res)
         return 0
+
     def get_sw_res(self):
         return CapPres.sw_res
 
@@ -208,6 +205,61 @@ class CapPres:
         fig.savefig('d_ds_pcap' + str(cp_type) + '.' + fmt)
         plt.clf()
         plt.close()
+class Sens:
+    def __init__(self, rel_perm_object, cap_pres_object,\
+            permeability = 2.e-12):
+        self.rel_perm = rel_perm_object
+        self.cap_pres = cap_pres_object
+        self.k = permeability
+        self.g = 9.81
+    def set_density_viscosity(self, mu_w, mu_n, rho_w, rho_n):
+        self.rel_perm.set_viscosities(mu_w, mu_n)
+        self.rho_w = rho_w
+        self.rho_n = rho_n
+    def q_total(self, sw):
+        q_total = 0.
+        return q_total
+    def advection_term(self, sw):
+        fw = self.rel_perm.fracflow_wet(sw)
+        qt = self.q_total(sw)
+        lamb_n = self.rel_perm.kr_non(sw) / self.rel_perm.mu_w
+        del_rho_g = (self.rho_w - self.rho_n) * self.g
+        F_w = fw * (qt + self.k * lamb_n * del_rho_g)
+        return F_w
+    def diffusion_term(self, sw):
+        fw = self.rel_perm.fracflow_wet(sw)
+        lamb_n = self.rel_perm.kr_non(sw) / self.rel_perm.mu_w
+        dpc_dsw = self.cap_pres.d_dsw_pcap(sw)
+        print "fw, lamb_n, dpc_dsw"
+        print fw, lamb_n, dpc_dsw
+        D = - fw * self.k * lamb_n * dpc_dsw
+        return D
+    def pseudo_peclet_term(self, sw, delta_x):
+        F_w = self.advection_term(sw)
+        D = self.diffusion_term(sw)
+        pec = F_w * delta_x / D
+        return pec
+    def plot_peclet_term(self, delta_x, n_spaces=100., fmt = 'png'):
+        sw_res = self.rel_perm.get_sw_res()
+        print "sw_res, n_spaces"
+        print sw_res, n_spaces
+        sw = np.linspace(sw_res, 1., n_spaces)
+        peclet = np.zeros(len(sw))
+        for i in range(len(sw)):
+            peclet[i] = self.pseudo_peclet_term(sw[i], delta_x)
+        fig = plt.figure(num=None, dpi=480,\
+                facecolor='w', edgecolor = 'k')
+        fig.suptitle('Peclet term F_w * dx / D, dx = ' + str(delta_x))
+        ax = fig.add_subplot(111)
+        ax.set_xlabel('Wetting Fluid Saturation []')
+        ax.set_ylabel('f(sw) []')
+        p1 = plt.plot(sw, peclet)
+        rp_type = self.rel_perm.get_rp_type()
+        fig.savefig('peclet_term'+ '_' 'dx_' + str(int(delta_x)) + '_' +\
+                 str(rp_type) + '.' + fmt)
+        plt.clf()
+        plt.close()
+
 # ===========================================================================
 # END ---------------------BASE CLASSES
 # ===========================================================================
@@ -330,32 +382,28 @@ class CPVanGenuchten(CapPres):
         return dpds
 
 if __name__ == '__main__':
-    sw_res = 0.2
-    rp_linear = RelPerm(sw_res)
-    rp_linear.plot_value()
-    cp_constant = CapPres(sw_res)
-    cp_constant.plot_value()
     rp_lamb = 0.8
     rp_s_lr = 0.2
     rp_s_ls = 1.0
     s_gr = 0.05
+    rp_linear = RelPerm(rp_s_lr)
     rp_van_genuchten = RPVanGenuchten(rp_s_lr, rp_lamb, rp_s_lr, rp_s_ls, s_gr)
     rp_van_genuchten.plot_value()
-    rp_van_genuchten.plot_derivative()
     cp_lamb = 0.4
-    cp_s_lr = 0.2
-    cp_p_0 = 1. / 1.61e-5
+    cp_s_lr = 0.0
+    cp_p_0 = 1. / 1.61e-3
     cp_p_max = 1.e7
     cp_s_ls = 0.999
+    cp_pres_constant = CapPres(rp_s_lr)
     cp_van_genuchten = CPVanGenuchten(cp_s_lr, cp_lamb, cp_s_lr, cp_p_0,\
             cp_p_max, cp_s_ls)
     cp_van_genuchten.plot_value()
-    cp_van_genuchten.plot_derivative()
     rp_cubic = RPCubic()
-    rp_cubic.plot_value()
-    rp_cubic.plot_derivative()
-    mu_w = 8.9e-4 # Pa*s
-    mu_n = 0.8 * mu_w
-    rp_cubic.set_viscosities(mu_w, mu_n)
-    rp_cubic.plot_fracflow()
-
+    mu_w = 6.9e-4 # Pa*s
+    mu_n = 5.45e-5
+    rho_w = 1020
+    rho_n = 688
+    s = Sens(rp_van_genuchten, cp_van_genuchten)
+    s.set_density_viscosity(mu_w, mu_n, rho_w, rho_n)
+    delta_x = 15.
+    s.plot_peclet_term(delta_x)
