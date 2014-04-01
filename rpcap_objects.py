@@ -230,8 +230,6 @@ class Sens:
         fw = self.rel_perm.fracflow_wet(sw)
         lamb_n = self.rel_perm.kr_non(sw) / self.rel_perm.mu_w
         dpc_dsw = self.cap_pres.d_dsw_pcap(sw)
-        print "fw, lamb_n, dpc_dsw"
-        print fw, lamb_n, dpc_dsw
         D = - fw * self.k * lamb_n * dpc_dsw
         return D
     def pseudo_peclet_term(self, sw, delta_x):
@@ -403,7 +401,8 @@ if __name__ == '__main__':
     mu_n = 5.45e-5
     rho_w = 1020
     rho_n = 688
-    s = Sens(rp_van_genuchten, cp_van_genuchten)
+    perm = 2.e-12
+    s = Sens(rp_van_genuchten, cp_van_genuchten, permeability = perm)
     s.set_density_viscosity(mu_w, mu_n, rho_w, rho_n)
-    delta_x = 15.
+    delta_x = 1.
     s.plot_peclet_term(delta_x)
