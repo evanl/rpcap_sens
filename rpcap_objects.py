@@ -13,17 +13,13 @@ class RelPerm:
         RelPerm.sw_res = sw_res
 
     def set_rp_type(self, rp_type):
-        print "Changing relative permeability type from " + str(self.rp_type)
         RelPerm.rp_type = rp_type
-        print " to " + str(self.rp_type)
         return 0
     def get_rp_type(self):
         return RelPerm.rp_type
 
     def set_sw_res(self, sw_res):
-        print "Changing sw_res from " + str(self.sw_res)
         RelPerm.sw_res = sw_res
-        print " to " + str(self.sw_res)
         return 0
 
     def set_viscosities(self, mu_w, mu_n):
@@ -67,6 +63,19 @@ class RelPerm:
         krn = self.kr_non(sw)
         ff = (krw / muw) / (krw / muw + krn / mun)
         return ff
+    def fracflow_prime_wet(self, sw):
+        muw, mun = self.get_viscosities()
+        krw = self.kr_wet(sw)
+        krn = self.kr_non(sw)
+        high = (krw / muw) 
+        low = (krw / muw + krn / mun)
+        d_high = self.d_ds_kr_wet(sw) / muw
+        d_low = self.d_ds_kr_wet(sw) / muw +\
+                self.d_ds_kr_non(sw) / mun
+        ffp = (low * d_high - high * d_low) / pow(low, 2.)
+        return ffp
+
+
     def fracflow_non(self, sw):
         """ MUST ADD VISCOSITIES FIRST
         """
@@ -121,19 +130,19 @@ class RelPerm:
     def plot_derivative(self, n_spaces=100., fmt = 'png'):
         sw_res = self.get_sw_res()
         sw = np.linspace(sw_res, 1., n_spaces)
-        kr_n = np.zeros(len(sw))
-        kr_w = np.zeros(len(sw))
+        dkr_n = np.zeros(len(sw))
+        dkr_w = np.zeros(len(sw))
         for i in range(len(sw)):
-            kr_n[i] = self.d_ds_kr_wet(sw[i])
-            kr_w[i] = self.d_ds_kr_non(sw[i])
+            dkr_w[i] = self.d_ds_kr_wet(sw[i])
+            dkr_n[i] = self.d_ds_kr_non(sw[i])
         fig = plt.figure(num=None, dpi=480,\
                 facecolor='w', edgecolor = 'k')
         fig.suptitle('Relative Permeability Derivatives')
         ax = fig.add_subplot(111)
         ax.set_xlabel('Wetting Fluid Saturation []')
         ax.set_ylabel('Rel Perm Derivative []')
-        p1 = plt.plot(sw, kr_w, label = 'wetting')
-        p2 = plt.plot(sw, kr_n, label = 'nonwetting')
+        p1 = plt.plot(sw, dkr_w, label = 'wetting')
+        p2 = plt.plot(sw, dkr_n, label = 'nonwetting')
         box = ax.get_position()
         ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
         ax.legend(loc='center left', bbox_to_anchor= (1, 0.5))
@@ -217,8 +226,12 @@ class Sens:
         self.rho_w = rho_w
         self.rho_n = rho_n
     def q_total(self, sw):
-        q_total = 0.
+        q_total = 0.1 * pow(10.,9.) / (600 * 50 * 50 * 24 * 365.25 * 3600)
+        #q_total = 0.
         return q_total
+    def q_prime(self, sw):
+        q_prime = 0.
+        return q_prime
     def advection_term(self, sw):
         fw = self.rel_perm.fracflow_wet(sw)
         qt = self.q_total(sw)
@@ -226,35 +239,66 @@ class Sens:
         del_rho_g = (self.rho_w - self.rho_n) * self.g
         F_w = fw * (qt + self.k * lamb_n * del_rho_g)
         return F_w
+    def advection_term_prime(self, sw):
+        fw = self.rel_perm.fracflow_wet(sw)
+        fp = self.rel_perm.fracflow_prime_wet(sw)
+        qt = self.q_total(sw)
+        qtp = self.q_prime(sw)
+        lamb_n = self.rel_perm.kr_non(sw) / self.rel_perm.mu_n
+        lamb_n_p = self.rel_perm.d_ds_kr_non(sw) / self.rel_perm.mu_n
+        del_rho_g = (self.rho_w - self.rho_n) * self.g
+        term1 = fp * (qt + self.k * lamb_n * del_rho_g)
+        term2 = fw * (qtp + self.k * del_rho_g * lamb_n_p)
+        F_w = term1 + term2
+        return F_w
     def diffusion_term(self, sw):
         fw = self.rel_perm.fracflow_wet(sw)
-        lamb_n = self.rel_perm.kr_non(sw) / self.rel_perm.mu_w
+        lamb_n = self.rel_perm.kr_non(sw) / self.rel_perm.mu_n
         dpc_dsw = self.cap_pres.d_dsw_pcap(sw)
         D = - fw * self.k * lamb_n * dpc_dsw
         return D
     def pseudo_peclet_term(self, sw, delta_x):
-        F_w = self.advection_term(sw)
+        F_w = self.advection_term_prime(sw)
         D = self.diffusion_term(sw)
         pec = F_w * delta_x / D
         return pec
+    def plot_diffusion_term(self, n_spaces=100., fmt = 'png'):
+        sw_res = self.rel_perm.get_sw_res()
+        sw = np.linspace(sw_res, 1., n_spaces)
+        diffusion = np.zeros(len(sw))
+        for i in range(len(sw)):
+            diffusion[i] = self.diffusion_term(sw[i])
+        fig = plt.figure(num=None, dpi=480,\
+                facecolor='w', edgecolor = 'k')
+        fig.suptitle("diffusion term D")
+        ax = fig.add_subplot(111)
+        ax.set_xlabel('Wetting Fluid Saturation []')
+        ax.set_ylabel('D []')
+        p1 = plt.plot(sw, diffusion)
+        rp_type = self.rel_perm.get_rp_type()
+        cp_type = self.cap_pres.get_cp_type()
+        fig.savefig('diffusion_term' + \
+                '_cp_' + str(cp_type) + '_rp_' + str(rp_type) + '.' + fmt)
+        plt.clf()
+        plt.close()
+
     def plot_peclet_term(self, delta_x, n_spaces=100., fmt = 'png'):
         sw_res = self.rel_perm.get_sw_res()
-        print "sw_res, n_spaces"
-        print sw_res, n_spaces
         sw = np.linspace(sw_res, 1., n_spaces)
         peclet = np.zeros(len(sw))
         for i in range(len(sw)):
             peclet[i] = self.pseudo_peclet_term(sw[i], delta_x)
         fig = plt.figure(num=None, dpi=480,\
                 facecolor='w', edgecolor = 'k')
-        fig.suptitle('Peclet term F_w * dx / D, dx = ' + str(delta_x))
+        fig.suptitle("Peclet term F_w' * dx / D, dx = " + str(delta_x))
         ax = fig.add_subplot(111)
         ax.set_xlabel('Wetting Fluid Saturation []')
-        ax.set_ylabel('f(sw) []')
+        ax.set_ylabel('peclet(sw) []')
         p1 = plt.plot(sw, peclet)
         rp_type = self.rel_perm.get_rp_type()
-        fig.savefig('peclet_term'+ '_' 'dx_' + str(int(delta_x)) + '_' +\
-                 str(rp_type) + '.' + fmt)
+        cp_type = self.cap_pres.get_cp_type()
+        fig.savefig('peclet_term'+ '_dx_' + str(int(delta_x)) + \
+                '_cp_' + str(cp_type) + '_rp_' + str(rp_type) + '.' + fmt)
         plt.clf()
         plt.close()
 
@@ -270,6 +314,7 @@ class RPVanGenuchten(RelPerm):
         self.s_ls = s_ls
         self.s_lr = s_lr
         self.s_gr = s_gr
+
     def kr_wet(self, sw):
         s_star = (sw - self.s_lr) / (self.s_ls - self.s_lr)
         s_hat = (sw - self.s_lr) / (1 - self.s_lr - self.s_gr)
@@ -279,6 +324,7 @@ class RPVanGenuchten(RelPerm):
         elif sw >= self.s_ls:
             krw = 1.
         return krw
+
     def kr_non(self, sw):
         if self.s_gr == 0:
             krn = 1 - self.kr_wet
@@ -286,6 +332,7 @@ class RPVanGenuchten(RelPerm):
             s_hat = (sw - self.s_lr) / (1 - self.s_lr - self.s_gr)
             krn = pow(1 - s_hat, 2.) * ( 1 - pow(s_hat, 2.))
         return krn
+
     def d_ds_kr_wet(self, sw):
         """ krw = a(ss) * f(g(h(ss)))
             dkrw/ds = 
@@ -318,13 +365,11 @@ class RPVanGenuchten(RelPerm):
         elif self.s_gr > 0.:
             sh = (sw - self.s_lr) / (1 - self.s_lr - self.s_gr)
             shp = 1. / (1 - self.s_lr - self.s_gr)
-            h = 1. - pow(sh, 2.)
-            hp = -2. * sh * shp
-            g = 1. - sh
-            gp = -shp
-            f = pow(g,2.)
-            fp = 2 * g * gp
-            dkrn_ds = f * hp + h * fp
+            a = pow(1. - sh, 2.)
+            b = 1 - pow(sh, 2.)
+            ap = -2. * (1. - sh) * shp
+            bp = -2. * sh * shp
+            dkrn_ds = a * bp + b * ap
         return dkrn_ds
 
 class RPCubic(RelPerm):
@@ -344,6 +389,44 @@ class RPCubic(RelPerm):
         drkn_ds = 3 * pow(1. - sw, 2.) * -1.
         return drkn_ds
 
+class RPGrant(RelPerm):
+    def __init__(self, slr, sgr):
+        self.set_sw_res(0.)
+        self.s_lr = slr
+        self.s_gr = sgr
+        self.set_rp_type('grant')
+    def kr_wet(self, sw):
+        sh = (sw - self.s_lr) / (1. - self.s_lr - self.s_gr)
+        krw = pow(sh, 4.)
+        return krw
+    def d_ds_kr_wet(self, sw):
+        sh = (sw - self.s_lr) / (1. - self.s_lr - self.s_gr)
+        shp = 1. / (1. - self.s_lr - self.s_gr)
+        dkrw_ds = 4 * pow(sh, 3.) * shp
+        return dkrw_ds
+    def kr_non(self, sw):
+        krn = 1. - self.kr_wet(sw)
+        return krn
+    def d_ds_kr_non(self, sw):
+        drkn_ds = -1. * self.d_ds_kr_wet(sw)
+        return drkn_ds
+
+class CPTrust(CapPres):
+    def __init__(self, s_lr, p_entry, p0, eta):
+        self.s_lr = s_lr
+        self.p_entry = p_entry
+        self.p0 = p0
+        self.eta = eta
+        self.set_cp_type('trust')
+    def pcap(self, sw):
+        frac = (1. - sw) / (sw - self.s_lr)
+        pcap = self.p_entry + self.p0 * pow(frac, 1./self.eta)
+        return pcap
+    def d_dsw_pcap(self, sw):
+        frac = (1. - sw) / (sw - self.s_lr)
+        quotient = (-1. * (sw - self.s_lr) - (1. - sw)) / pow(sw- self.s_lr, 2.)
+        dpcapdsw = self.p0/self.eta * pow(frac, 1./self.eta -1.) * quotient
+        return dpcapdsw
 class CPVanGenuchten(CapPres):
     def __init__(self, sw_res, lamb, s_lr, p_0, p_max, s_ls):
         self.set_sw_res(sw_res)
@@ -353,6 +436,7 @@ class CPVanGenuchten(CapPres):
         self.p_0 = p_0
         self.p_max = p_max
         self.s_ls = s_ls
+
     def pcap(self, sw):
         s_star = (sw - self.s_lr) / (self.s_ls - self.s_lr)
         pcap = self.p_0 * \
@@ -380,29 +464,56 @@ class CPVanGenuchten(CapPres):
         return dpds
 
 if __name__ == '__main__':
+    t_p0 = 1.e3
+    t_pe = 1.e3
+    t_eta = 2.
+    t_res = 0.2
+
+    mu_w = 6.9e-4 # Pa*s
+    mu_n = 5.45e-5
+    rho_w = 1020
+    rho_n = 688
+
+    perm = 2.e-12
+
     rp_lamb = 0.8
     rp_s_lr = 0.2
     rp_s_ls = 1.0
     s_gr = 0.05
     rp_linear = RelPerm(rp_s_lr)
-    rp_van_genuchten = RPVanGenuchten(rp_s_lr, rp_lamb, rp_s_lr, rp_s_ls, s_gr)
-    rp_van_genuchten.plot_value()
+
+    #rp_van_genuchten = RPVanGenuchten(rp_s_lr, rp_lamb, rp_s_lr, rp_s_ls, s_gr)
+    #rp_van_genuchten.plot_value()
+    #rp_van_genuchten.plot_derivative()
+
+    #rp_grant = RPGrant(rp_s_lr, s_gr)
+    #rp_grant.plot_value()
+    #rp_grant.plot_derivative()
+
+    rp_cubic = RPCubic()
+    rp_cubic.plot_value()
+    rp_cubic.plot_derivative()
+    
     cp_lamb = 0.4
     cp_s_lr = 0.0
-    cp_p_0 = 1. / 1.61e-3
+    cp_p_0 = 1. / 2.79e-4
     cp_p_max = 1.e7
     cp_s_ls = 0.999
+
     cp_pres_constant = CapPres(rp_s_lr)
+
+    #cp_trust = CPTrust(t_res, t_pe, t_p0, t_eta)
+    #cp_trust.plot_value()
+    #cp_trust.plot_derivative()
+
     cp_van_genuchten = CPVanGenuchten(cp_s_lr, cp_lamb, cp_s_lr, cp_p_0,\
             cp_p_max, cp_s_ls)
     cp_van_genuchten.plot_value()
-    rp_cubic = RPCubic()
-    mu_w = 6.9e-4 # Pa*s
-    mu_n = 5.45e-5
-    rho_w = 1020
-    rho_n = 688
-    perm = 2.e-12
-    s = Sens(rp_van_genuchten, cp_van_genuchten, permeability = perm)
+    cp_van_genuchten.plot_derivative()
+
+    s = Sens(rp_cubic, cp_van_genuchten, permeability = perm)
     s.set_density_viscosity(mu_w, mu_n, rho_w, rho_n)
     delta_x = 1.
     s.plot_peclet_term(delta_x)
+    #s.plot_diffusion_term()
+    #s.rel_perm.plot_fracflow()
