@@ -227,7 +227,7 @@ class Sens:
         self.rho_n = rho_n
     def q_total(self, sw):
         q_total = 0.1 * pow(10.,9.) / (600 * 50 * 50 * 24 * 365.25 * 3600)
-        #q_total = 0.
+        q_total = 0.
         return q_total
     def q_prime(self, sw):
         q_prime = 0.
@@ -249,6 +249,7 @@ class Sens:
         del_rho_g = (self.rho_w - self.rho_n) * self.g
         term1 = fp * (qt + self.k * lamb_n * del_rho_g)
         term2 = fw * (qtp + self.k * del_rho_g * lamb_n_p)
+        print "term1,", term1, "term2", term2
         F_w = term1 + term2
         return F_w
     def diffusion_term(self, sw):
@@ -357,6 +358,8 @@ class RPVanGenuchten(RelPerm):
         a = np.sqrt(ss)
         ap = 1. / (a * 2.) * ssp
         dkrw_ds = ap * f + a * fp
+        if sw == 1.:
+            dkrw_ds = self.d_ds_kr_wet(sw-0.001)
         return dkrw_ds
 
     def d_ds_kr_non(self, sw):
@@ -411,21 +414,20 @@ class RPGrant(RelPerm):
         drkn_ds = -1. * self.d_ds_kr_wet(sw)
         return drkn_ds
 
-class CPTrust(CapPres):
-    def __init__(self, s_lr, p_entry, p0, eta):
+class CPLeverett(CapPres):
+    def __init__(self, s_lr, p0, sigma):
         self.s_lr = s_lr
-        self.p_entry = p_entry
         self.p0 = p0
-        self.eta = eta
-        self.set_cp_type('trust')
+        self.sigma = sigma
+        self.set_cp_type('leverett')
     def pcap(self, sw):
-        frac = (1. - sw) / (sw - self.s_lr)
-        pcap = self.p_entry + self.p0 * pow(frac, 1./self.eta)
+        ss = (sw - 1.) / (1. - self.s_lr)
+        f = 1.417 * (1 - ss) - 2.120 * pow(1 - ss, 2.) + \
+                1.263 * pow(1 - ss, 3.)
+        pcap = self.p0 * self.sigma * f
         return pcap
     def d_dsw_pcap(self, sw):
-        frac = (1. - sw) / (sw - self.s_lr)
-        quotient = (-1. * (sw - self.s_lr) - (1. - sw)) / pow(sw- self.s_lr, 2.)
-        dpcapdsw = self.p0/self.eta * pow(frac, 1./self.eta -1.) * quotient
+        ss = (1. - sw) / (1. - self.s_lr)
         return dpcapdsw
 class CPVanGenuchten(CapPres):
     def __init__(self, sw_res, lamb, s_lr, p_0, p_max, s_ls):
@@ -464,10 +466,6 @@ class CPVanGenuchten(CapPres):
         return dpds
 
 if __name__ == '__main__':
-    t_p0 = 1.e3
-    t_pe = 1.e3
-    t_eta = 2.
-    t_res = 0.2
 
     mu_w = 6.9e-4 # Pa*s
     mu_n = 5.45e-5
@@ -482,9 +480,9 @@ if __name__ == '__main__':
     s_gr = 0.05
     rp_linear = RelPerm(rp_s_lr)
 
-    #rp_van_genuchten = RPVanGenuchten(rp_s_lr, rp_lamb, rp_s_lr, rp_s_ls, s_gr)
-    #rp_van_genuchten.plot_value()
-    #rp_van_genuchten.plot_derivative()
+    rp_van_genuchten = RPVanGenuchten(rp_s_lr, rp_lamb, rp_s_lr, rp_s_ls, s_gr)
+    rp_van_genuchten.plot_value()
+    rp_van_genuchten.plot_derivative()
 
     #rp_grant = RPGrant(rp_s_lr, s_gr)
     #rp_grant.plot_value()
@@ -494,26 +492,25 @@ if __name__ == '__main__':
     rp_cubic.plot_value()
     rp_cubic.plot_derivative()
     
-    cp_lamb = 0.4
-    cp_s_lr = 0.0
+    cp_lamb = 0.8
+    cp_s_lr = 0.1
     cp_p_0 = 1. / 2.79e-4
     cp_p_max = 1.e7
-    cp_s_ls = 0.999
+    cp_s_ls = 1.
 
     cp_pres_constant = CapPres(rp_s_lr)
 
-    #cp_trust = CPTrust(t_res, t_pe, t_p0, t_eta)
-    #cp_trust.plot_value()
-    #cp_trust.plot_derivative()
+    cp_leverett = CPLeverett(0.2, 1.e4, 0.027)
+    cp_leverett.plot_value()
 
     cp_van_genuchten = CPVanGenuchten(cp_s_lr, cp_lamb, cp_s_lr, cp_p_0,\
             cp_p_max, cp_s_ls)
     cp_van_genuchten.plot_value()
     cp_van_genuchten.plot_derivative()
 
-    s = Sens(rp_cubic, cp_van_genuchten, permeability = perm)
+    s = Sens(rp_van_genuchten, cp_van_genuchten, permeability = perm)
     s.set_density_viscosity(mu_w, mu_n, rho_w, rho_n)
     delta_x = 1.
     s.plot_peclet_term(delta_x)
-    #s.plot_diffusion_term()
-    #s.rel_perm.plot_fracflow()
+    s.plot_diffusion_term()
+    s.rel_perm.plot_fracflow()
