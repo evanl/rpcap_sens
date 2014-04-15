@@ -91,8 +91,8 @@ class RelPerm:
         kr_n = np.zeros(len(sw))
         kr_w = np.zeros(len(sw))
         for i in range(len(sw)):
-            kr_n[i] = self.kr_wet(sw[i])
-            kr_w[i] = self.kr_non(sw[i])
+            kr_w[i] = self.kr_wet(sw[i])
+            kr_n[i] = self.kr_non(sw[i])
         fig = plt.figure(num=None, dpi=480,\
                 facecolor='w', edgecolor = 'k')
         fig.suptitle('Relative Permeability Curves')
@@ -226,8 +226,10 @@ class Sens:
         self.rho_w = rho_w
         self.rho_n = rho_n
     def q_total(self, sw):
-        q_total = 0.1 * pow(10.,9.) / (600 * 50 * 50 * 24 * 365.25 * 3600)
-        q_total = 0.
+        rho = 600.
+        q_total = 0.1 * pow(10.,9.) / (50 * 50 * 24 * 365.25 * 3600) * 1./ rho
+        q_total = 0.001
+        print "q_total", q_total
         return q_total
     def q_prime(self, sw):
         q_prime = 0.
@@ -257,6 +259,8 @@ class Sens:
         lamb_n = self.rel_perm.kr_non(sw) / self.rel_perm.mu_n
         dpc_dsw = self.cap_pres.d_dsw_pcap(sw)
         D = - fw * self.k * lamb_n * dpc_dsw
+        print "term3"
+        print D
         return D
     def pseudo_peclet_term(self, sw, delta_x):
         F_w = self.advection_term_prime(sw)
@@ -480,9 +484,9 @@ if __name__ == '__main__':
     s_gr = 0.05
     rp_linear = RelPerm(rp_s_lr)
 
-    rp_van_genuchten = RPVanGenuchten(rp_s_lr, rp_lamb, rp_s_lr, rp_s_ls, s_gr)
-    rp_van_genuchten.plot_value()
-    rp_van_genuchten.plot_derivative()
+    #rp_van_genuchten = RPVanGenuchten(rp_s_lr, rp_lamb, rp_s_lr, rp_s_ls, s_gr)
+    #rp_van_genuchten.plot_value()
+    #rp_van_genuchten.plot_derivative()
 
     #rp_grant = RPGrant(rp_s_lr, s_gr)
     #rp_grant.plot_value()
@@ -492,23 +496,23 @@ if __name__ == '__main__':
     rp_cubic.plot_value()
     rp_cubic.plot_derivative()
     
-    cp_lamb = 0.8
-    cp_s_lr = 0.1
-    cp_p_0 = 1. / 2.79e-4
-    cp_p_max = 1.e7
+    cp_lamb = 0.4
+    cp_s_lr = 0.0
+    cp_p_0 = 1. / 1.61e-3
+    cp_p_max = 1.e5
     cp_s_ls = 1.
 
     cp_pres_constant = CapPres(rp_s_lr)
 
-    cp_leverett = CPLeverett(0.2, 1.e4, 0.027)
-    cp_leverett.plot_value()
+    #cp_leverett = CPLeverett(0.2, 1.e4, 0.027)
+    #cp_leverett.plot_value()
 
     cp_van_genuchten = CPVanGenuchten(cp_s_lr, cp_lamb, cp_s_lr, cp_p_0,\
             cp_p_max, cp_s_ls)
     cp_van_genuchten.plot_value()
     cp_van_genuchten.plot_derivative()
 
-    s = Sens(rp_van_genuchten, cp_van_genuchten, permeability = perm)
+    s = Sens(rp_cubic, cp_van_genuchten, permeability = perm)
     s.set_density_viscosity(mu_w, mu_n, rho_w, rho_n)
     delta_x = 1.
     s.plot_peclet_term(delta_x)
