@@ -220,7 +220,7 @@ class Sens:
         self.rel_perm = rel_perm_object
         self.cap_pres = cap_pres_object
         self.k = permeability
-        self.g = 9.81
+        self.g = -9.81
     def set_density_viscosity(self, mu_w, mu_n, rho_w, rho_n):
         self.rel_perm.set_viscosities(mu_w, mu_n)
         self.rho_w = rho_w
@@ -228,7 +228,7 @@ class Sens:
     def q_total(self, sw):
         rho = 600.
         q_total = 0.1 * pow(10.,9.) / (50 * 50 * 24 * 365.25 * 3600) * 1./ rho
-        q_total = 0.001
+        #q_total = 0.0
         print "q_total", q_total
         return q_total
     def q_prime(self, sw):
@@ -497,10 +497,10 @@ if __name__ == '__main__':
     rp_cubic.plot_derivative()
     
     cp_lamb = 0.4
-    cp_s_lr = 0.0
-    cp_p_0 = 1. / 1.61e-3
-    cp_p_max = 1.e5
-    cp_s_ls = 1.
+    cp_s_lr = 0.2
+    cp_p_0 = 1. / 1.61e-5
+    cp_p_max = 1.e7
+    cp_s_ls = 0.999
 
     cp_pres_constant = CapPres(rp_s_lr)
 
